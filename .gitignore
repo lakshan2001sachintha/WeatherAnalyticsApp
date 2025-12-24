@@ -1,0 +1,29 @@
+# .NET Backend
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+*.dll
+*.exe
+*.pdb
+appsettings.Development.json
+appsettings.Production.json
+packages/
+
+# React Frontend
+node_modules/
+dist/
+.env
+.env.local
+.env.production.local
+.env.development.local
+*.log
+.DS_Store
+
+# IDE
+.idea/
+*.swp
+*.swo
+Thumbs.db
