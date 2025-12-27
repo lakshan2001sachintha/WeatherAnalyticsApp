@@ -1,42 +1,29 @@
-using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
+using WeatherAnalyticsAPI.Models;
 
 namespace WeatherAnalyticsAPI.Services;
 
 public class WeatherService
 {
-    private readonly IMemoryCache _cache;
-    private readonly HttpClient _httpClient;
-    private readonly IConfiguration _configuration;
+    private readonly HttpClient _http;
+    private readonly IConfiguration _config;
 
-    public WeatherService(
-        IMemoryCache cache,
-        HttpClient httpClient,
-        IConfiguration configuration)
+    public WeatherService(HttpClient http, IConfiguration config)
     {
-        _cache = cache;
-        _httpClient = httpClient;
-        _configuration = configuration;
+        _http = http;
+        _config = config;
     }
 
-    public async Task<JsonElement> GetWeatherAsync(int cityId)
+    public async Task<WeatherApiResponse> GetWeatherAsync(string cityId)
     {
-        var cacheKey = $"weather_{cityId}";
+        var apiKey = _config["OpenWeather:ApiKey"];
+        var url = $"https://api.openweathermap.org/data/2.5/weather?id={cityId}&appid={apiKey}&units=metric";
 
-        if (_cache.TryGetValue(cacheKey, out JsonElement cached))
+        var response = await _http.GetStringAsync(url);
+        var options = new JsonSerializerOptions
         {
-            return cached;
-        }
-
-        var apiKey = _configuration["OpenWeather:ApiKey"];
-        var url =
-            $"https://api.openweathermap.org/data/2.5/weather?id={cityId}&appid={apiKey}&units=metric";
-
-        var response = await _httpClient.GetStringAsync(url);
-        var json = JsonDocument.Parse(response).RootElement;
-
-        _cache.Set(cacheKey, json, TimeSpan.FromMinutes(5));
-
-        return json;
+            PropertyNameCaseInsensitive = true
+        };
+        return JsonSerializer.Deserialize<WeatherApiResponse>(response, options)!;
     }
 }

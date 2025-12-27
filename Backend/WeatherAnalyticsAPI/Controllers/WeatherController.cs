@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using WeatherAnalyticsAPI.Models;
 using WeatherAnalyticsAPI.Services;
@@ -8,58 +8,59 @@ namespace WeatherAnalyticsAPI.Controllers;
 
 [ApiController]
 [Route("api/weather")]
-[Authorize]
 public class WeatherController : ControllerBase
 {
     private readonly WeatherService _weatherService;
-    private readonly ComfortIndexService _comfortIndexService;
+    private readonly ComfortIndexService _comfortService;
+    private readonly CacheService _cache;
 
-    public WeatherController(
-        WeatherService weatherService,
-        ComfortIndexService comfortIndexService)
+    public WeatherController( WeatherService weatherService, ComfortIndexService comfortService, CacheService cache)
     {
         _weatherService = weatherService;
-        _comfortIndexService = comfortIndexService;
+        _comfortService = comfortService;
+        _cache = cache;
     }
 
     [HttpGet("comfort")]
     public async Task<IActionResult> GetComfortIndex()
     {
-        var cities = JsonSerializer.Deserialize<List<City>>(
-            System.IO.File.ReadAllText("cities.json"));
+        var jsonData = JsonSerializer.Deserialize<JsonElement>(
+            System.IO.File.ReadAllText("Data/cities.json"));
+        
+        var cities = jsonData.GetProperty("List").Deserialize<List<City>>();
 
-        var results = new List<WeatherComfortResult>();
+        var results = new List<ComfortResult>();
 
-        foreach (var city in cities!)
+        if (cities == null) return BadRequest("No cities found");
+
+        foreach (var city in cities)
         {
-            var data = await _weatherService.GetWeatherAsync(city.CityCode);
+          var weather = await _cache.GetOrCreate(
+          $"weather_{city.CityCode}",
+          async () => await _weatherService.GetWeatherAsync(city.CityCode)
+    );
 
-            var temp = data.GetProperty("main").GetProperty("temp").GetDouble();
-            var humidity = data.GetProperty("main").GetProperty("humidity").GetInt32();
-            var wind = data.GetProperty("wind").GetProperty("speed").GetDouble();
-            var desc = data.GetProperty("weather")[0].GetProperty("description").GetString();
+            var score = _comfortService.Calculate(weather);
 
-            var score = _comfortIndexService.Calculate(temp, humidity, wind);
-
-            results.Add(new WeatherComfortResult
+            results.Add(new ComfortResult
             {
                 City = city.Name,
-                Temperature = temp,
-                Humidity = humidity,
-                WindSpeed = wind,
-                Description = desc!,
+                Temperature = weather.Main.Temp,
+                Description = weather.Weather.First().Description,
                 ComfortScore = score
             });
         }
 
         var ranked = results
-            .OrderByDescending(r => r.ComfortScore)
-            .Select((r, i) =>
+            .OrderByDescending(x => x.ComfortScore)
+            .Select((x, index) =>
             {
-                r.Rank = i + 1;
-                return r;
+                x.Rank = index + 1;
+                return x;
             });
 
         return Ok(ranked);
     }
 }
+
+
